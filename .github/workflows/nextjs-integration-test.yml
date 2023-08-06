@@ -30,7 +30,7 @@ env:
   NEXT_TELEMETRY_DISABLED: 1
   TEST_CONCURRENCY: 6
   # pnpm version should match to what upstream next.js uses
-  PNPM_VERSION: 7.24.3
+  PNPM_VERSION: 8.6.11
   DATADOG_API_KEY: ${{ secrets.DD_KEY_TURBOPACK }}
   DATADOG_TRACE_NEXTJS_TEST: "true"
   DD_ENV: "ci"
@@ -67,6 +67,7 @@ jobs:
       fail-fast: false
       matrix:
         group: [1, 2, 3]
+        #group: [1]
 
     steps:
       - uses: actions/cache/restore@v3
@@ -82,12 +83,20 @@ jobs:
           npm i -g yarn
           sudo npx playwright install-deps && pnpm playwright install
           NEXT_TEST_MODE=dev node run-tests.js -g ${{ matrix.group }}/3 -c ${TEST_CONCURRENCY} --test-pattern '^(test\/(development|e2e|unit)|packages\/.*\/src\/.*)/.*\.test\.(js|jsx|ts|tsx)$'
+          # NEXT_TEST_MODE=dev node run-tests.js -g ${{ matrix.group }}/1 -c ${TEST_CONCURRENCY} test/e2e/middleware-general/test/index.test.ts
           ls test/turbopack-test-junit-report
         # It is currently expected to fail some of next.js integration test, do not fail CI check.
         continue-on-error: true
         env:
           # marker to parse log output, do not delete / change.
           NEXT_INTEGRATION_TEST: true
+      - name: Check
+        run: |
+          ls test/turbopack-test-junit-report
+          # for f in test/turbopack-test-junit-report/*.xml; do
+          #   echo "Processing $f"
+          #   cat $f
+          # done
       - name: Upload test reports artifact
         uses: actions/upload-artifact@v3
         with:
@@ -100,6 +109,7 @@ jobs:
     needs: [setup_nextjs]
     runs-on: ubuntu-latest-16-core-oss
     timeout-minutes: 180
+    # if: false
     strategy:
       fail-fast: false
       matrix:
@@ -134,6 +144,7 @@ jobs:
     needs: [setup_nextjs]
     runs-on: ubuntu-latest-16-core-oss
     timeout-minutes: 180
+    # if: false
     strategy:
       fail-fast: false
       matrix:
@@ -193,6 +204,7 @@ jobs:
             slack-payload.json
 
   upload_test_trace:
+    # needs: [test-dev]
     needs: [test-dev, test-prod, test-integration]
     name: Upload test trace to datadog
     runs-on: ubuntu-latest-8-core-oss
@@ -212,5 +224,13 @@ jobs:
           npm install -g junit-report-merger@6.0.2 @datadog/datadog-ci @aws-sdk/property-provider
           jrm ./nextjs-test-result-junit.xml "test/**/*.xml"
           ls -al ./*.xml
+          # cat ./nextjs-test-result-junit.xml
           # We'll tag this to the Turbopack service, not the next.js
           DD_ENV=ci datadog-ci junit upload --tags test.type:turbopack.daily --service Turbopack ./nextjs-test-result-junit.xml
+      - name: Upload test reports artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Merged test trace reports
+          path: |
+            nextjs-test-result-junit.xml
+            ./**/*.xml
